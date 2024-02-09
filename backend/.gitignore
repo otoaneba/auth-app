@@ -38,6 +38,7 @@ junit.xml
 # env
 /.env
 .npmrc
+.env
 
 .env.dev
 .env.test

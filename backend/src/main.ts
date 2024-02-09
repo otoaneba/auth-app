@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma.service';
+import { ValidationPipe } from '@nestjs/common';
+import { PrismaClientExceptionFilter } from '../src/prisma-client-exception';
 
 async function bootstrap() {
   process.env.DATABASE_URL = `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_DATABASE}?schema=${process.env.DB_SCHEMA}&sslmode=prefer`;
@@ -12,6 +14,8 @@ async function bootstrap() {
     cors: true,
   });
   // app.useLogger(app.get(PinoLogger));
+  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalFilters(new PrismaClientExceptionFilter());
   const prismaService = app.get(PrismaService);
   await prismaService.enableShutdownHooks(app);
   const config = new DocumentBuilder()
