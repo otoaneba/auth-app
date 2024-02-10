@@ -39,7 +39,6 @@ export class CustomerController {
 
   @UseGuards(AccessTokenGuard, RolesGuard) // Match with AT strategy
   @Roles(Role.ADMIN)
-  @UseFilters(PrismaClientExceptionFilter)
   @Delete('/delete/:email')
   async deleteUser(@Param('email') email: string) {
     const deletedCustomer = await this.customerService.deleteUser(email);
