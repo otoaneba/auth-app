@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, NotFoundException, InternalServerErrorException, Body, Put, UseGuards, Delete, Req, HttpCode, HttpStatus, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Param, NotFoundException, InternalServerErrorException, Body, Put, UseGuards, Delete, Req, HttpCode, HttpStatus, Query, Res, UseFilters } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { Role } from '@prisma/client';
 import { Tokens } from './types'
@@ -8,10 +8,17 @@ import { RequestWithUser } from './types';
 import { RolesGuard, Roles } from './roles';
 import { GetCurrentCustomer } from './decorators';
 import { Response } from 'express';
+import { PrismaClientExceptionFilter } from 'src/prisma-client-exception';
 
 @Controller('customers')
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}
+
+  @Get('/lookup/:email')
+  @UseGuards(AccessTokenGuard)
+  async getCustomerByEmail(@Param('email') email: string) {
+    return await this.customerService.getCustomerByEmail(email);
+  }
 
   @UseGuards(AccessTokenGuard, RolesGuard) // Match with AT strategy
   @Roles(Role.ADMIN)
@@ -32,10 +39,10 @@ export class CustomerController {
 
   @UseGuards(AccessTokenGuard, RolesGuard) // Match with AT strategy
   @Roles(Role.ADMIN)
-  @Delete('/delete/:id')
-  async deleteUser(@Req() req: RequestWithUser) {
-    console.log('deleting from controller', req.user)
-    const deletedCustomer = await this.customerService.deleteUser(req.user.sub);
+  @UseFilters(PrismaClientExceptionFilter)
+  @Delete('/delete/:email')
+  async deleteUser(@Param('email') email: string) {
+    const deletedCustomer = await this.customerService.deleteUser(email);
     if (!deletedCustomer) {
       throw new NotFoundException(`User with ID not found`);
     }
@@ -60,28 +67,18 @@ export class CustomerController {
   @Post('/login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res() res: Response){
-    console.log('logging in controller')
     const tokens = await this.customerService.login(dto);
-    console.log('tokens in controller tokens')
+    // return tokens in httponly cookie ie
+    /**
+     *  res.cookie('accessToken', accessToken, {
+          httpOnly: true,
+          secure: true, // for https
+          sameSite: 'strict', 
+          path: '/',
+          maxAge: 24 * 60 * 60 * 1000,
+        });
+     */
     res.json(tokens)
-    const temp = this.customerService.login(dto);
-    
-  }
-
-  @UseGuards(AccessTokenGuard) // Match with AT strategy
-  @Post('/logout')
-  @HttpCode(HttpStatus.OK)
-  logout(@GetCurrentCustomer('sub') id: string) {
-    return this.customerService.logout(id)
-  }
-
-  // @UseGuards(AccessTokenGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  @Post('/logout2')
-  @HttpCode(HttpStatus.OK)
-  logoutTemp(@Req() req: Request) {
-    console.log('request: ', req)
-    return this.customerService.logout('asdf')
   }
 
   @UseGuards(RefreshTokenGuard) // Match with RT strategy

@@ -11,7 +11,6 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
     const response = ctx.getResponse<Response>();
     const message = exception.message.replace(/\n/g, '');
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-
     switch (exception.code) {
       case 'P1000': 
         console.log('role base authentication here')

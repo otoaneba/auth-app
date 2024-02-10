@@ -23,26 +23,28 @@ export class CustomerService {
   }
 
   /**
-   * 
-   * @param dto 
+   * @description - Get the customer by email.
+   * @param id 
    * @returns 
    */
-  async signup(dto: AuthDto): Promise<Tokens | null> {
-    const hash = await this.hashData(dto.password);
-
-      const newCustomer = await this.prisma.customer.create({
-        data: {
-          email: dto.email,
-          password: hash
-        },
+  async getCustomerByEmail(email: string): Promise<Customer | null> {
+    try {
+      const customer = await this.prisma.customer.findUniqueOrThrow( {
+        where: { email }
       });
-      const tokens = await this.getTokens(newCustomer.id, newCustomer.email, newCustomer.role);
-      await this.updateRtHash(newCustomer.id, tokens.refresh_token);
-      return tokens
+      console.log(customer)
+      return customer;
+    } catch (error) {
+      if (error?.code === 'P2025') { // use predefined error code from prisma client
+        throw new NotFoundException(`Customer with email, ${email}, not found`)
+      } else {
+        throw new InternalServerErrorException('Internal server error occurred while retrieving customer', error)
+      }
+    }
   }
 
   /**
-   * 
+   * @description - Sign up with email and password.
    * @param dto 
    * @returns 
    */
@@ -62,26 +64,6 @@ export class CustomerService {
       return { message: 'User registered, please check your email to verify your account' };
   }
 
-  /**
-   * 
-   * @param id 
-   * @returns 
-   */
-  async getCustomerByEmail(email: string): Promise<Customer | null> {
-    try {
-      const customer = await this.prisma.customer.findUniqueOrThrow( {
-        where: { email }
-      });
-      console.log(customer)
-      return customer;
-    } catch (error) {
-      if (error?.code === 'P2025') { // use predefined error code from prisma client
-        throw new NotFoundException(`Customer with email, ${email}, not found`)
-      } else {
-        throw new InternalServerErrorException('Internal server error occurred while retrieving customer', error)
-      }
-    }
-  }
 
   /**
    * @description - 
@@ -279,14 +261,14 @@ export class CustomerService {
   }
 
   /**
-   * 
+   * @description - Deletes user via email.
    * @param id 
    * @returns 
    */
-  async deleteUser(id: string): Promise<Customer | null> {
+  async deleteUser(email: string): Promise<Customer | null> {
       const result = await this.prisma.customer.delete({
         where: {
-          id: id
+          email: email
         }
       });
       return result
