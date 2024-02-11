@@ -10,7 +10,7 @@ import { CustomerController } from './customer.controller';
 @Module({
   imports: [PassportModule,
     JwtModule.register({
-      secret: 'at-secret', // Ensure this is securely managed
+      secret: process.env.AT_KEY, // Ensure this is securely managed
       signOptions: { expiresIn: '15m' }, }),
   ],
   controllers: [CustomerController],

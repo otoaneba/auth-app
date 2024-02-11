@@ -124,7 +124,7 @@ export class CustomerService {
    */
   async verifyEmail(token: string): Promise<any> {
     try {
-      const decoded = this.jwtService.verify(token, { secret: 'at-secret'})
+      const decoded = this.jwtService.verify(token, { secret: process.env.AT_KEY})
       const customer = await this.getCustomerByEmail(decoded.email);
       if (!customer) throw new Error('Customer not found')
       const update = {confirmed: true}
@@ -195,7 +195,7 @@ export class CustomerService {
           role,
         },
         {
-          secret: 'at-secret', // Match with AT strategy key. Should be more complex, but hard coded for simplicity for now.
+          secret: process.env.AT_KEY, // Match with AT strategy key. Should be more complex, but hard coded for simplicity for now.
           expiresIn: 60 * 15 // 15 minutes
         }
       ),
@@ -206,7 +206,7 @@ export class CustomerService {
           role,
         },
         {
-          secret: 'rt-secret', // Match with RT strategy.
+          secret: process.env.RT_KEY, // Match with RT strategy.
           expiresIn: 60 * 60 * 24 * 7 // One week
         }
       )
