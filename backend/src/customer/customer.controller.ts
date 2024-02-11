@@ -4,11 +4,9 @@ import { Role } from '@prisma/client';
 import { Tokens } from './types'
 import { AuthDto, LoginDto } from './dto';
 import { AccessTokenGuard, RefreshTokenGuard } from './guards';
-import { RequestWithUser } from './types';
 import { RolesGuard, Roles } from './roles';
 import { GetCurrentCustomer } from './decorators';
 import { Response } from 'express';
-import { PrismaClientExceptionFilter } from 'src/prisma-client-exception';
 
 @Controller('customers')
 export class CustomerController {
@@ -25,16 +23,8 @@ export class CustomerController {
   @Put('/update/:email')
   async updateCustomerByEmail(@Param('email') email: string, @Body() updateData: {}) {
     console.log('updating')
-    try {
       const result = await this.customerService.updateCustomerByEmail(email, updateData);
       return result;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw new NotFoundException(error.message)
-      } else {
-        throw new InternalServerErrorException('Internal server execption');
-      }
-    }
   }
 
   @UseGuards(AccessTokenGuard, RolesGuard) // Match with AT strategy
@@ -51,7 +41,6 @@ export class CustomerController {
   @Post('/signupEmail')
   @HttpCode(HttpStatus.CREATED)
   async signupWithEmail(@Body() dto: AuthDto): Promise<Tokens> {
-    console.log('signing up')
     return this.customerService.signupWithEmail(dto);
   }
 
@@ -65,19 +54,25 @@ export class CustomerController {
 
   @Post('/login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res() res: Response){
-    const tokens = await this.customerService.login(dto);
-    // return tokens in httponly cookie ie
-    /**
-     *  res.cookie('accessToken', accessToken, {
-          httpOnly: true,
-          secure: true, // for https
-          sameSite: 'strict', 
-          path: '/',
-          maxAge: 24 * 60 * 60 * 1000,
-        });
-     */
-    res.json(tokens)
+  async login(@Body() dto: LoginDto, @Res() res: Response) {
+    try {
+      const tokens = await this.customerService.login(dto);
+      // return tokens in httponly cookie ie
+      /**
+       *  res.cookie('accessToken', accessToken, {
+            httpOnly: true,
+            secure: true, // for https
+            sameSite: 'strict', 
+            path: '/',
+            maxAge: 24 * 60 * 60 * 1000,
+          });
+       */
+      res.json(tokens)
+    } catch (error) {
+      res.status(error.status || 500).json({
+        message: error.response || 'Internal server error',
+      });
+    }
   }
 
   @UseGuards(RefreshTokenGuard) // Match with RT strategy

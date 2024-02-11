@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpStatus, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { GetCustomerInput } from './dto/customer.input';
 import { AuthDto, LoginDto } from './dto';
@@ -7,6 +7,7 @@ import { Tokens } from './types'
 import { JwtService } from '@nestjs/jwt';
 import { Customer, Role } from '@prisma/client';
 import * as nodemailer from 'nodemailer';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime';
 
 @Injectable()
 export class CustomerService {
@@ -32,11 +33,10 @@ export class CustomerService {
       const customer = await this.prisma.customer.findUniqueOrThrow( {
         where: { email }
       });
-      console.log(customer)
       return customer;
     } catch (error) {
-      if (error?.code === 'P2025') { // use predefined error code from prisma client
-        throw new NotFoundException(`Customer with email, ${email}, not found`)
+      if (error?.code) { // use predefined error code from prisma client
+        this.transformPrismaException(error);
       } else {
         throw new InternalServerErrorException('Internal server error occurred while retrieving customer', error)
       }
@@ -49,19 +49,27 @@ export class CustomerService {
    * @returns 
    */
   async signupWithEmail(dto: AuthDto): Promise<any> {
+    try {
       const hash = await this.hashData(dto.password);
-
       const newCustomer = await this.prisma.customer.create({
         data: {
           email: dto.email,
-          password: hash
+          password: hash,
+          role: dto.role
         },
       });
-      console.log('data: ', dto)
       const email = dto.email;
       const verificationToken = this.jwtService.sign({ email }, { expiresIn: '24h' });
       this.sendVerificationEmail(email, verificationToken);
       return { message: 'User registered, please check your email to verify your account' };
+    } catch (error) {
+      if (error?.code) {
+        this.transformPrismaException(error);
+      } else {
+        throw new InternalServerErrorException("Internal server error");
+      }
+    }
+
   }
 
 
@@ -78,12 +86,11 @@ export class CustomerService {
         data: updateData
       });
       return customer;
-    } catch (error) {
-      if (error?.code === 'P2025') { // use predefined error code from prisma client
-        throw new NotFoundException(`Customer with ID ${email} not found. Customer was not updated.`)
-      } else {
-        throw new InternalServerErrorException('Internal server error occurred while retrieving customer', error)
-      }
+    } catch(error) {
+      if (error.code) {
+        this.transformPrismaException(error)
+      } else 
+      throw new InternalServerErrorException('Internal server error occurred while retrieving customer', error)
     }
   }
   
@@ -116,21 +123,17 @@ export class CustomerService {
    * @param token 
    */
   async verifyEmail(token: string): Promise<any> {
-    const decoded = this.jwtService.verify(token, { secret: 'at-secret'})
-    console.log('decoded: ', decoded)
-    const customer = await this.getCustomerByEmail(decoded.email);
-    if (!customer) throw new Error('Customer not found')
-    const update = {confirmed: true}
     try {
-      const customer = this.updateCustomerByEmail(decoded.email, update)
-      return customer;
+      const decoded = this.jwtService.verify(token, { secret: 'at-secret'})
+      const customer = await this.getCustomerByEmail(decoded.email);
+      if (!customer) throw new Error('Customer not found')
+      const update = {confirmed: true}
+      const updatedCustomer = this.updateCustomerByEmail(decoded.email, update)
+      return updatedCustomer;
     } catch (error) {
-      if (error?.code === 'P2025') { // use predefined error code from prisma client
-        throw new Error(`Customer with ID not found. Customer was not updated.`)
-      } else {
-        throw new Error('Internal server error occurred while retrieving customer: ' + error)
-      }
+      throw new InternalServerErrorException("Internal server error");
     }
+
   }
 
   /**
@@ -138,24 +141,20 @@ export class CustomerService {
    * @param loginDto 
    */
   async login(loginDto: LoginDto): Promise<Tokens> {
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        email: loginDto.email
-      }
-    });
-    console.log('logging in', customer)
-    if (!customer.confirmed) {
-      throw new Error("Please confirm your email to login.")
-    }
-    if (!customer) throw new ForbiddenException("Access Denied");
-
-    const passwordMatch = await bcrypt.compare(loginDto.password, customer.password);
-    if (!passwordMatch) throw new ForbiddenException("Access Denied");
-    console.log('passwordMatch', passwordMatch)
-    const tokens = await this.getTokens(customer.id, customer.email, customer.role);
-    await this.updateRtHash(customer.id, tokens.refresh_token);
-    console.log('tokens', tokens)
-    return tokens;
+      const customer = await this.prisma.customer.findUnique({
+        where: {
+          email: loginDto.email
+        }
+      });
+      if (!customer) throw new NotFoundException("Customer Not Found") 
+      if (!customer.confirmed) throw new UnauthorizedException("Please confirm your email to login.");
+      
+      const passwordMatch = await bcrypt.compare(loginDto.password, customer.password);
+      if (!passwordMatch) throw new ForbiddenException("Access Denied");
+      
+      const tokens = await this.getTokens(customer.id, customer.email, customer.role);
+      await this.updateRtHash(customer.id, tokens.refresh_token);
+      return tokens;
   }
 
   /**
@@ -274,4 +273,26 @@ export class CustomerService {
       return result
   }
 
+  /**
+   * 
+   * @param error 
+   */
+  transformPrismaException(error: PrismaClientKnownRequestError) {
+    switch (error?.code) {
+      case 'P1000': 
+        console.log('role base authentication here')
+        throw new ForbiddenException("Forbidden.")
+      case 'P2002': 
+        throw new ConflictException("User with email or ID already exists.")
+      case 'P6002': 
+      throw new UnauthorizedException("Unauthorized")
+      case 'P6005': 
+        throw new BadRequestException("Bad request.")
+      case 'P2025': 
+        throw new NotFoundException("Customer not found.")
+      default:
+        console.log('filtering default', error.code )
+        throw new Error("Error")
+    }
+  }
 }
